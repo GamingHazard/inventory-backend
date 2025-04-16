@@ -43,6 +43,7 @@ app.listen(port, () => {
 const User = require("./models/users");
  
 const Inventory = require("./models/inventory");
+const UsedStock = require("./models/usedStock");
 
  
 
@@ -392,71 +393,7 @@ app.patch("/verify-recover-email", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-// DELETE ACCOUNTS
-app.delete("/delete-account", async (req, res) => {
-  const { id, password } = req.body;
-
-  // 1) Verify admin exists
-  const adminUser = await Admin.findById({ id });
-  if (!adminUser) {
-    return res.status(404).json({ message: "Admin not found" });
-  }
-
-  // 2) Validate password
-  const isPasswordValid = await bcrypt.compare(password, adminUser.password);
-  if (!isPasswordValid) {
-    return res.status(401).json({
-      message: "Invalid password. Please check and try again.",
-    });
-  }
-
-  try {
-    // 3) Fetch all courses belonging to this admin
-    const courses = await Courses.find({ adminId: id });
-    if (courses.length === 0) {
-      // nothing to delete
-      return res
-        .status(200)
-        .json({ message: "Account deleted. No courses to remove." });
-    }
-
-    // 4) Collect all coverImage public_Ids
-    const coverIds = courses.map((c) => c.coverImage.public_Id);
-
-    // 5) Collect all video public_Ids
-    const videoIds = courses.flatMap((c) => c.videos.map((v) => v.public_Id));
-
-    // 6) Delete all cover images
-    await Promise.all(
-      coverIds.map((public_Id) => cloudinary.uploader.destroy(public_Id))
-    );
-
-    // 7) Delete all videos
-    await Promise.all(
-      videoIds.map((public_Id) =>
-        cloudinary.uploader.destroy(public_Id, { resource_type: "video" })
-      )
-    );
-
-    // 8) Delete the course documents
-    await Courses.deleteMany({ adminId: id });
-
-    // 9) Optionally delete the admin user itself
-    await Admin.findByIdAndDelete(id);
-
-    res
-      .status(200)
-      .json({ message: "Account and all related courses deleted." });
-  } catch (error) {
-    console.error("Error deleting account:", error);
-    res.status(500).json({
-      message:
-        "An unexpected error occurred while deleting the account. Please try again later.",
-      error: error.message,
-    });
-  }
-});
-
+ 
 // UPDATING ENDPOINTS
 app.patch("/update-admin", async (req, res) => {
   const { names, email, contact, recoveryEmail, id } = req.body;
@@ -485,21 +422,7 @@ app.patch("/update-admin", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-//endpoint to follow a particular user
-app.post("/follow", async (req, res) => {
-  const { currentUserId, selectedUserId } = req.body;
-
-  try {
-    await User.findByIdAndUpdate(selectedUserId, {
-      $push: { followers: currentUserId },
-    });
-
-    res.sendStatus(200);
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "error in following a user" });
-  }
-});
+ 
 
 // CHANGE admin PASSWORD
 // Endpoint for User password
@@ -583,303 +506,8 @@ app.patch("/change-password/:id", async (req, res) => {
       .json({ message: "Password update failed due to a server error." });
   }
 });
-// Endpoint for  creating courses
-app.post("/create-course", async (req, res) => {
-  try {
-    const {
-      courseName,
-      sector,
-      videos,
-      duration,
-      coverImage,
-      adminId,
-      description,
-    } = req.body;
-
-    // Basic validation
-    if (
-      !courseName ||
-      !sector ||
-      !duration ||
-      !adminId ||
-      !Array.isArray(videos) ||
-      videos.length === 0
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Some data is missing or invalid" });
-    }
-
-    // Check for duplicate course
-    const existingCourse = await Courses.findOne({ courseName });
-    if (existingCourse) {
-      return res
-        .status(409)
-        .json({ message: "A course with this title already exists" });
-    }
-
-    // Create and save the course
-    const newCourse = new Courses({
-      courseName,
-      sector,
-      videos,
-      coverImage,
-      adminId,
-      description,
-      duration,
-    });
-
-    await newCourse.save();
-
-    res.status(201).json({
-      message: "Course created successfully",
-    });
-  } catch (error) {
-    console.error("Error creating course:", error);
-    res.status(500).json({
-      message: "Failed to create course",
-      error: error.message,
-    });
-  }
-});
-
-// Endpoint to get all courses
-app.get("/course/:category", async (req, res) => {
-  try {
-    const { category } = req.params; // Corrected from 'categories' to 'category'
-
-    // Fetch courses for the given category
-    const courses = await Courses.find({ sector: category }).sort({
-      createdAt: -1,
-    });
-
-    if (courses.length === 0) {
-      return res
-        .status(404)
-        .json({ message: "No course found for this sector" });
-    }
-
-    res.status(200).json({
-      message: "Courses fetched successfully",
-      courses,
-    });
-  } catch (error) {
-    console.error("Error fetching courses:", error);
-    res.status(500).json({ message: "Failed to fetch courses" });
-  }
-});
-// Endpoint to get all courses
-app.get("/courses", async (req, res) => {
-  try {
-    // Fetch courses for the given category
-    const courses = await Courses.find().sort({
-      createdAt: -1,
-    });
-
-    if (courses.length === 0) {
-      return res.status(404).json({ message: "No course found " });
-    }
-
-    res.status(200).json({
-      message: "Courses fetched successfully",
-      courses,
-    });
-  } catch (error) {
-    console.error("Error fetching courses:", error);
-    res.status(500).json({ message: "Failed to fetch courses" });
-  }
-});
-
-// Endpoint for deleting a course
-app.delete("/delete-course/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // 1) Find the course first (so we know its images/videos)
-    const course = await Courses.findById(id);
-    if (!course) {
-      return res.status(404).json({ message: "Course not found" });
-    }
-
-    // 2) Delete cover image using the correct property name
-    const coverImageResult = await cloudinary.uploader.destroy(
-      course.coverImage.public_Id
-    );
-    console.log("Cover image delete response:", coverImageResult);
-
-    // 3) Delete each video with logging
-    for (const vid of course.videos) {
-      const videoResult = await cloudinary.uploader.destroy(vid.public_Id, {
-        resource_type: "video",
-      });
-      console.log(`Video delete response for ${vid.public_Id}:`, videoResult);
-    }
-
-    // 4) Finally, remove the course document from the database
-    await Courses.findByIdAndDelete(id);
-
-    res.status(200).json({
-      message: `Course with ID "${id}" deleted successfully`,
-      deletedCourse: course,
-    });
-  } catch (error) {
-    console.error("Error deleting course:", error);
-    res
-      .status(500)
-      .json({ message: "Failed to delete course", error: error.message });
-  }
-});
-
-// Endpoint to update courses
-app.patch("/update-course/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    // 1) Find the course first (so we know its images )
-    const course = await Courses.findById(id);
-    if (!course) {
-      return res.status(404).json({ message: "Course not found" });
-    }
-
-    // 2) Delete cover image
-    await cloudinary.uploader.destroy(course.coverImage.public_Id);
-    // 3) create  an empty updates object
-    const updates = {};
-
-    // 4) Only copy over the fields the client sent
-    [
-      "courseName",
-      "sector",
-      "duration",
-      "description",
-      "coverImage",
-      "videos",
-      "adminId",
-    ].forEach((field) => {
-      if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
-      }
-    });
-
-    // 5) Make sure there's something to update
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ message: "No valid fields to update" });
-    }
-
-    // 6) Perform the update
-    const updatedCourse = await Courses.findByIdAndUpdate(
-      id,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedCourse) {
-      return res.status(404).json({ message: "Course not found" });
-    }
-
-    res.status(200).json({
-      message: "Course updated successfully",
-      course: updatedCourse,
-    });
-  } catch (error) {
-    console.error("Error updating course:", error);
-    res.status(500).json({
-      message: "Failed to update course",
-      error: error.message,
-    });
-  }
-});
-
-// endpoint for saving a particular course
-app.put("/course/save", async (req, res) => {
-  const { courseId, userId } = req.body;
-
-  try {
-    const courses = await Courses.findById({ courseId });
-    const user = await User.findById({ userId });
-
-    if (!courses || !user) {
-      return res.status(404).json({ message: "user or course not found" });
-    }
-    const updatedCourse = await Courses.findByIdAndUpdate(
-      courseId,
-      { $addToSet: { likes: userId } }, // Add user's ID to the likes array
-      { new: true } // To return the updated post
-    );
-
-    // updating the user's saved courses
-    await User.findByIdAndUpdate(
-      userId,
-      { $addToSet: { savedCourses: courseId } }, // Add user's ID to the likes array
-      { new: true } // To return the updated post
-    );
-    res.json(updatedCourse);
-  } catch (error) {
-    console.error("Error liking post:", error);
-    res
-      .status(500)
-      .json({ message: "An error occurred while liking the post" });
-  }
-});
-
-//endpoint to unsave a post
-app.put("/course/unsave", async (req, res) => {
-  const { courseId, userId } = req.body;
-
-  try {
-    const courses = await Courses.findById({ courseId });
-    const user = await User.findById({ userId });
-
-    if (!user || !courses) {
-      return res.status(404).json({ message: "user or course not found" });
-    }
-    const updatedCourse = await Courses.findByIdAndUpdate(
-      courseId,
-      { $pull: { likes: userId } },
-      { new: true }
-    );
-    await User.findByIdAndUpdate(
-      userId,
-      { $pull: { savedCoursess: courseId } },
-      { new: true }
-    );
-
-    res.json(updatedCourse);
-  } catch (error) {
-    console.error("Error unsaving post:", error);
-    res
-      .status(500)
-      .json({ message: "An error occurred while unsaving the course" });
-  }
-});
-
-// endpoint to enroll for a course
-app.put("/course/enroll", async (req, res) => {
-  const { courseId, userId } = req.body;
-  try {
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { $addToSet: { enrolledCourses: courseId } }, // Add course's ID to the enrolledCourses array
-      { new: true } // To return the updated post
-    );
-    if (!user) {
-      return res.status(404).json({ message: "user not found" });
-    }
-
-    await user.save(); //save the updates
-
-    let enrolledCourse = user.enrolledCourses.course === courseId;
-    res.status(200).json({
-      message: `yous have successfully enrolled for${""} ${
-        enrolledCourse.courseName
-      }`,
-    });
-  } catch (error) {
-    console.error("Error liking post:", error);
-    res
-      .status(500)
-      .json({ message: "An error occurred while liking the post" });
-  }
-});
+ 
+ 
 
 app.get("/profile/:userId", async (req, res) => {
   try {
@@ -894,5 +522,126 @@ app.get("/profile/:userId", async (req, res) => {
     return res.status(200).json({ user });
   } catch (error) {
     res.status(500).json({ message: "Error while getting the profile" });
+  }
+});
+
+// POST endpoint to create a new inventory item
+app.post("/inventory", async (req, res) => {
+  try {
+    // Destructure the fields from the request body
+    const {
+      category,
+      itemName,
+      quantity,
+      scale,
+      remainder = 0,
+      remainderScale = "",
+      postedDate, // optional, if you want to override default posted date
+    } = req.body;
+
+    // Ensure required fields are provided
+    if (!category || !itemName || !quantity || !scale) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    // Assuming you're using some sort of authentication middleware that adds the user to the request.
+    // If not, ensure you pass user id in req.body or handle otherwise.
+    const user = req.user && req.user._id ? req.user._id : req.body.user;
+    if (!user) {
+      return res.status(401).json({ error: "User not authenticated." });
+    }
+
+    // Create a new inventory document
+    const newInventory = new Inventory({
+      category,
+      itemName,
+      quantity,
+      scale,
+      remainder,
+      remainderScale,
+      postedDate: postedDate || Date.now(),
+      user,
+    });
+
+    // Save the inventory document to the database
+    const savedInventory = await newInventory.save();
+
+    // Return the saved document
+    res.status(201).json(savedInventory);
+  } catch (error) {
+    console.error("Error posting inventory:", error);
+    res.status(500).json({ error: "Server error while saving inventory." });
+  }
+});
+
+// POST endpoint to create a new used stock record
+app.post("/usedstock", async (req, res) => {
+  try {
+    // Destructure the fields from the request body
+    const {
+      category,
+      itemName,
+      quantity,
+      scale,
+      postedDate, // optional if you want to override the default postedDate
+    } = req.body;
+
+    // Validate required fields
+    if (!category || !itemName || !quantity || !scale) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    // Retrieve the user id either from authentication middleware or the request body
+    const user = req.user && req.user._id ? req.user._id : req.body.user;
+    if (!user) {
+      return res.status(401).json({ error: "User not authenticated." });
+    }
+
+    // Create a new used stock document
+    const newUsedStock = new UsedStock({
+      category,
+      itemName,
+      quantity,
+      scale,
+      postedDate: postedDate || Date.now(),
+      user,
+    });
+
+    // Save the document to the database
+    const savedUsedStock = await newUsedStock.save();
+
+    // Return the saved document
+    res.status(201).json(savedUsedStock);
+  } catch (error) {
+    console.error("Error creating used stock:", error);
+    res.status(500).json({ error: "Server error while creating used stock." });
+  }
+});
+// GET endpoint to retrieve inventory items
+app.get("/inventory", async (req, res) => {
+  try {
+    // Optionally filter by authenticated user if available
+    const userId = req.user && req.user._id;
+    const filter = userId ? { user: userId } : {};
+
+    const inventories = await Inventory.find(filter);
+    res.json(inventories);
+  } catch (error) {
+    console.error("Error fetching inventories:", error);
+    res.status(500).json({ error: "Server error while retrieving inventories." });
+  }
+});
+// GET endpoint to retrieve used stock records
+app.get("/usedstock", async (req, res) => {
+  try {
+    // Optionally filter by authenticated user if available
+    const userId = req.user && req.user._id;
+    const filter = userId ? { user: userId } : {};
+
+    const usedStockList = await UsedStock.find(filter);
+    res.json(usedStockList);
+  } catch (error) {
+    console.error("Error fetching used stock:", error);
+    res.status(500).json({ error: "Server error while retrieving used stock." });
   }
 });

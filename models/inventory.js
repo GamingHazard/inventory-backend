@@ -2,30 +2,37 @@ const mongoose = require("mongoose");
 
 const InventorySchema = new mongoose.Schema(
   {
+    category: {
+      type: String,
+      required: true,
+      index: true,
+    },
     itemName: {
       type: String,
       required: true,
       index: true,
-
     },
     quantity: {
-      type: String,
-      required: true,
-      index: true,
-    },
-    mls: {
-      type: String,
+      type: Number,
       required: true,
     },
-    machineType: {
+    scale: {
       type: String,
       required: true,
     },
-    coverImage: {
-      url: { type: String, required: true, default: "" },
-      public_Id: { type: String, required: true, default: "" },
+    remainder: {
+      type: Number,
+      default: 0,
     },
-    
+    remainderScale: {
+      type: String,
+      default: ""
+    },
+    // Custom field to record the posting date of the inventory entry
+    postedDate: {
+      type: Date,
+      default: Date.now,
+    },
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -33,7 +40,7 @@ const InventorySchema = new mongoose.Schema(
       index: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true } // This will automatically add createdAt and updatedAt fields as well.
 );
 
 const Inventory = mongoose.model("Inventory", InventorySchema);
