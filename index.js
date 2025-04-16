@@ -645,3 +645,16 @@ app.get("/usedstock", async (req, res) => {
     res.status(500).json({ error: "Server error while retrieving used stock." });
   }
 });
+
+// GET /api/inventory/search?q=milk
+app.get('/search', async (req, res) => {
+  try {
+    const query = req.query.q;
+    const results = await Inventory.find({
+      itemName: { $regex: query, $options: 'i' }
+    });
+    res.status(200).json(results);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
