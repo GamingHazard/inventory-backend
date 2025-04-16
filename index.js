@@ -41,174 +41,22 @@ app.listen(port, () => {
 });
 
 const User = require("./models/users");
-const Admin = require("./models/admin");
-const Courses = require("./models/courses");
+ 
+const Inventory = require("./models/inventory");
 
-// CONFIGURATIONS
-const sendVerificationEmail = async (email, verificationToken) => {
-  //create a nodemailer transporter
+ 
 
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-
-  //compose the email message
-  const mailOptions = {
-    from: "mimobilecourses.com",
-    to: email,
-    subject: "Email Verification",
-    text: `please click the following link to verify your email https://micourses-au-ug.onrender.com/verify/${verificationToken}`,
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-  } catch (error) {
-    console.log("error sending email", error);
-  }
-};
-
-app.get("/verify/:token", async (req, res) => {
-  try {
-    const token = req.params.token;
-
-    const user = await Admin.findOne({ verificationToken: token });
-    if (!user) {
-      return res.status(404).sendFile("error.html", { root: "public" });
-    }
-
-    user.verified = true;
-    user.verificationToken = undefined;
-    await user.save();
-
-    res.status(200).sendFile("success.html", { root: "public" });
-  } catch (error) {
-    console.log("error getting token", error);
-    res.status(500).sendFile("error.html", { root: "public" });
-  }
-});
-
-const generateSecretKey = () => {
-  const secretKey = crypto.randomBytes(32).toString("hex");
-  return secretKey;
-};
-
-const secretKey = generateSecretKey();
-
-app.get("/cloudinary-signature/:preset", async (req, res) => {
-  const { preset } = req.params; // Correctly access preset from the URL params
-
-  if (!preset) {
-    return res.status(400).json({ error: "preset is required" });
-  }
-
-  const timestamp = Math.round(new Date().getTime() / 1000);
-  const signature = cloudinary.utils.api_sign_request(
-    { timestamp, upload_preset: preset }, // Pass the preset here
-    cloudinary.config().api_secret
-  );
-
-  res.json({ timestamp, signature });
-});
-
+ 
 // AUTHENTICATION
 
-app.post("/register-admin", async (req, res) => {
-  try {
-    const { names, contact, email, password } = req.body;
-
-    // Validation regex patterns
-    const namesPattern = /^[a-zA-Z]+(?:\s{0,2}[a-zA-Z]+)*$/; // Only letters with max 2 spaces
-    const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/; // Valid email format
-    const contactPattern = /^[0-9]{10}$/; // Exactly 10 digits
-    const minPasswordLength = 6;
-
-    // Validate Names
-    if (!names || !namesPattern.test(names.trim())) {
-      return res.status(400).json({
-        message: "Invalid names. Only text allowed with max of 2 spaces.",
-      });
-    }
-
-    // Validate Email
-    if (!email || !emailPattern.test(email.trim())) {
-      return res.status(400).json({ message: "Invalid email format." });
-    }
-
-    // Validate Contact
-    if (!contact || !contactPattern.test(contact.trim())) {
-      return res.status(400).json({
-        message: "Invalid contact number. Must be exactly 10 digits.",
-      });
-    }
-
-    // Validate Password
-    if (!password || password.length < minPasswordLength) {
-      return res
-        .status(400)
-        .json({ message: "Password must be at least 6 characters long." });
-    }
-
-    // Check if email is already registered
-    const existingUser = await Admin.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "Email already registered" });
-    }
-
-    // Hash the password before saving the user
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create a new admin user
-    const newUser = new Admin({
-      names: names.trim(),
-      contact: contact.trim(),
-      email: email.trim(),
-      password: hashedPassword,
-    });
-
-    // Generate and store the verification token
-    newUser.verificationToken = crypto.randomBytes(20).toString("hex");
-
-    // Send the verification email to the user
-    sendVerificationEmail(newUser.email, newUser.verificationToken);
-
-    // Save the user to the database
-    await newUser.save();
-
-    // Generate JWT Token
-    const token = jwt.sign({ userId: newUser._id }, secretKey, {
-      expiresIn: "1h",
-    });
-
-    // Return user details (excluding password for security)
-    const profile = {
-      names: newUser.names,
-      email: newUser.email,
-      contact: newUser.contact,
-      verified: newUser.verified,
-    };
-
-    res.status(200).json({
-      message: "Registration successful",
-      data: profile,
-      token,
-      id: newUser._id,
-    });
-  } catch (error) {
-    console.error("Error registering user:", error);
-    res.status(500).json({ message: "Error registering user" });
-  }
-});
+ 
 
 //  Endpoint for admin Login
-app.post("/admin-login", async (req, res) => {
+app.post("/login", async (req, res) => {
   try {
     const { identifier, password } = req.body;
     // Find user by email or phone
-    const user = await Admin.findOne({
+    const user = await User.findOne({
       $or: [{ email: identifier }, { contact: identifier }],
     });
 
@@ -217,7 +65,7 @@ app.post("/admin-login", async (req, res) => {
     }
 
     // Check if the password matches
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ message: "Wrong password" });
     }
@@ -231,13 +79,7 @@ app.post("/admin-login", async (req, res) => {
     res.status(200).json({
       token,
       id: user._id,
-      user: {
-        names: user.names,
-        email: user.email,
-        profilePicture: user.profilePicture,
-        contact: user.contact,
-        recoveryEmail: user.recoverEmail,
-      },
+      user
     });
   } catch (error) {
     console.error("Error during login", error);
@@ -321,19 +163,21 @@ app.patch("/verify-user-email", async (req, res) => {
 });
 // UPDATING ENDPOINTS
 app.patch("/register-user", async (req, res) => {
-  const { firstName, secondName, gender, birth, contact, password, id } =
+  const { firstName, secondName, gender,   contact, password, id } =
     req.body;
 
   if (!mongoose.Types.ObjectId.isValid({ id })) {
     return res.status(400).json({ error: "Invalid user ID" });
   }
 
+  const hashedPassword = bcrypt.hash(password,10)
+
   try {
     const updateFields = {
       firstName,
       secondName,
       gender,
-      dateOfBirth: birth,
+      password: hashedPassword,
       contact,
     };
 
