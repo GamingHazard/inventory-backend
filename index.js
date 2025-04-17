@@ -534,9 +534,10 @@ app.post("/inventory", async (req, res) => {
       itemName,
       quantity,
       scale,
+      description,
       remainder = 0,
       remainderScale = "",
-      postedDate, // optional, if you want to override default posted date
+       
     } = req.body;
 
     // Ensure required fields are provided
@@ -544,12 +545,12 @@ app.post("/inventory", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields." });
     }
 
-    // Assuming you're using some sort of authentication middleware that adds the user to the request.
-    // If not, ensure you pass user id in req.body or handle otherwise.
-    const user = req.user && req.user._id ? req.user._id : req.body.user;
-    if (!user) {
-      return res.status(401).json({ error: "User not authenticated." });
-    }
+    // // Assuming you're using some sort of authentication middleware that adds the user to the request.
+    // // If not, ensure you pass user id in req.body or handle otherwise.
+    // const user = req.user && req.user._id ? req.user._id : req.body.user;
+    // if (!user) {
+    //   return res.status(401).json({ error: "User not authenticated." });
+    // }
 
     // Create a new inventory document
     const newInventory = new Inventory({
@@ -557,10 +558,11 @@ app.post("/inventory", async (req, res) => {
       itemName,
       quantity,
       scale,
+      description,
       remainder,
       remainderScale,
-      postedDate: postedDate || Date.now(),
-      user,
+      postedDate:  Date.now(),
+       
     });
 
     // Save the inventory document to the database
@@ -583,6 +585,7 @@ app.post("/usedstock", async (req, res) => {
       itemName,
       quantity,
       scale,
+      description,
       postedDate, // optional if you want to override the default postedDate
     } = req.body;
 
@@ -603,6 +606,7 @@ app.post("/usedstock", async (req, res) => {
       itemName,
       quantity,
       scale,
+      description,
       postedDate: postedDate || Date.now(),
       user,
     });

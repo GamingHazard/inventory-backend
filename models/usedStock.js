@@ -20,6 +20,10 @@ const UsedStockSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    description: {
+      type: String,
+     default:""
+    },
     // Field to record the posting date explicitly; createdAt will also be managed by timestamps
     postedDate: {
       type: Date,
@@ -28,7 +32,7 @@ const UsedStockSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+       
       index: true,
     },
   },

@@ -28,6 +28,10 @@ const InventorySchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+    description: {
+      type: String,
+      default: ""
+    },
     // Custom field to record the posting date of the inventory entry
     postedDate: {
       type: Date,
@@ -36,7 +40,7 @@ const InventorySchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+       
       index: true,
     },
   },
