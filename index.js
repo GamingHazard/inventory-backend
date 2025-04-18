@@ -571,51 +571,58 @@ app.post("/inventory", async (req, res) => {
   }
 });
 
-// POST endpoint to create a new used stock record
+// POST endpoint to create one or many used‑stock records
 app.post("/usedstock", async (req, res) => {
   try {
-    // Destructure the fields from the request body
-    const {
-      category,
-      itemName,
-      quantity,
-      scale,
-      description,
-      postedDate, // optional if you want to override the default postedDate
-    } = req.body;
+    const { usedStock } = req.body;
 
-    // Validate required fields
-    if (!category || !itemName || !quantity || !scale) {
-      return res.status(400).json({ error: "Missing required fields." });
+    // 1️⃣ Validate that we have an array
+    if (!Array.isArray(usedStock) || usedStock.length === 0) {
+      return res.status(400).json({ error: "No used‑stock items provided." });
     }
 
-    // Retrieve the user id either from authentication middleware or the request body
-    const user = req.user && req.user._id ? req.user._id : req.body.user;
-    if (!user) {
-      return res.status(401).json({ error: "User not authenticated." });
-    }
+    // 2️⃣ Map each incoming item to your Mongoose fields
+    const docs = usedStock.map((u) => {
+      const {
+        category,
+        item, // front‑end key
+        quantity,
+        scale,
+        description = "",
+      } = u;
 
-    // Create a new used stock document
-    const newUsedStock = new UsedStock({
-      category,
-      itemName,
-      quantity,
-      scale,
-      description,
-      postedDate: postedDate || Date.now(),
-      user,
+      // 3️⃣ Validate per‑item required fields
+      if (!category || !item || !quantity || !scale) {
+        throw new Error(
+          "Missing required fields in one of the used‑stock items."
+        );
+      }
+
+      return {
+        category,
+        itemName: item, // map to schema
+        quantity,
+        scale,
+        description,
+        postedDate: Date.now(),
+        // If you have auth middleware, you could add `user: req.user._id` here
+      };
     });
 
-    // Save the document to the database
-    const savedUsedStock = await newUsedStock.save();
+    // 4️⃣ Bulk‑insert
+    const saved = await UsedStock.insertMany(docs);
 
-    // Return the saved document
-    res.status(201).json(savedUsedStock);
-  } catch (error) {
-    console.error("Error creating used stock:", error);
-    res.status(500).json({ error: "Server error while creating used stock." });
+    // 5️⃣ Return the array of saved docs
+    res.status(201).json(saved);
+  } catch (err) {
+    console.error("Error creating used‑stock:", err);
+    if (err.message.includes("Missing required")) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: "Server error while creating used‑stock." });
   }
 });
+
 // GET endpoint to retrieve inventory items
 app.get("/inventory", async (req, res) => {
   try {
