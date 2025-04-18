@@ -44,6 +44,7 @@ const User = require("./models/users");
 
 const Inventory = require("./models/inventory");
 const UsedStock = require("./models/usedStock");
+const Cycle = require("./models/cycles");
 
 // AUTHENTICATION
 
@@ -666,5 +667,31 @@ app.get("/search", async (req, res) => {
     res.status(200).json(results);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/cycle", async (req, res) => {
+  try {
+    const { juiceType, ingredients, createdAt } = req.body;
+    // Create and save the cycle
+    const cycle = new Cycle({ juiceType, ingredients, createdAt });
+    const savedCycle = await cycle.save();
+    return res.status(201).json(savedCycle);
+  } catch (error) {
+    console.error("Error saving cycle:", error);
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ error: error.message });
+    }
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.get("/cycles", async (req, res) => {
+  try {
+    const cycles = await Cycle.find().sort({ createdAt: -1 });
+    return res.status(200).json(cycles);
+  } catch (error) {
+    console.error("Error fetching cycles:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
