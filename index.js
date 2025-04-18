@@ -41,16 +41,11 @@ app.listen(port, () => {
 });
 
 const User = require("./models/users");
- 
+
 const Inventory = require("./models/inventory");
 const UsedStock = require("./models/usedStock");
 
- 
-
- 
 // AUTHENTICATION
-
- 
 
 //  Endpoint for admin Login
 app.post("/login", async (req, res) => {
@@ -80,7 +75,7 @@ app.post("/login", async (req, res) => {
     res.status(200).json({
       token,
       id: user._id,
-      user
+      user,
     });
   } catch (error) {
     console.error("Error during login", error);
@@ -164,14 +159,13 @@ app.patch("/verify-user-email", async (req, res) => {
 });
 // UPDATING ENDPOINTS
 app.patch("/register-user", async (req, res) => {
-  const { firstName, secondName, gender,   contact, password, id } =
-    req.body;
+  const { firstName, secondName, gender, contact, password, id } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid({ id })) {
     return res.status(400).json({ error: "Invalid user ID" });
   }
 
-  const hashedPassword = bcrypt.hash(password,10)
+  const hashedPassword = bcrypt.hash(password, 10);
 
   try {
     const updateFields = {
@@ -393,7 +387,7 @@ app.patch("/verify-recover-email", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
- 
+
 // UPDATING ENDPOINTS
 app.patch("/update-admin", async (req, res) => {
   const { names, email, contact, recoveryEmail, id } = req.body;
@@ -422,7 +416,6 @@ app.patch("/update-admin", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
- 
 
 // CHANGE admin PASSWORD
 // Endpoint for User password
@@ -506,8 +499,6 @@ app.patch("/change-password/:id", async (req, res) => {
       .json({ message: "Password update failed due to a server error." });
   }
 });
- 
- 
 
 app.get("/profile/:userId", async (req, res) => {
   try {
@@ -525,53 +516,57 @@ app.get("/profile/:userId", async (req, res) => {
   }
 });
 
-// POST endpoint to create a new inventory item
+// POST endpoint to create one or many inventory items
 app.post("/inventory", async (req, res) => {
   try {
-    // Destructure the fields from the request body
-    const {
-      category,
-      itemName,
-      quantity,
-      scale,
-      description,
-      remainder = 0,
-      remainderScale = "",
-       
-    } = req.body;
+    const { inventories } = req.body;
 
-    // Ensure required fields are provided
-    if (!category || !itemName || !quantity || !scale) {
-      return res.status(400).json({ error: "Missing required fields." });
+    // Make sure we got an array
+    if (!Array.isArray(inventories) || inventories.length === 0) {
+      return res.status(400).json({ error: "No inventory items provided." });
     }
 
-    // // Assuming you're using some sort of authentication middleware that adds the user to the request.
-    // // If not, ensure you pass user id in req.body or handle otherwise.
-    // const user = req.user && req.user._id ? req.user._id : req.body.user;
-    // if (!user) {
-    //   return res.status(401).json({ error: "User not authenticated." });
-    // }
+    // Transform each incoming object into your Inventory schema
+    const docs = inventories.map((inv) => {
+      const {
+        category,
+        item, // front‑end key is `item`
+        quantity,
+        scale,
+        description = "",
+        remainder = 0,
+        remainderScale = "",
+      } = inv;
 
-    // Create a new inventory document
-    const newInventory = new Inventory({
-      category,
-      itemName,
-      quantity,
-      scale,
-      description,
-      remainder,
-      remainderScale,
-      postedDate:  Date.now(),
-       
+      // Validate required fields
+      if (!category || !item || !quantity || !scale) {
+        throw new Error("Missing required fields in one of the items.");
+      }
+
+      return {
+        category,
+        itemName: item, // map to your schema’s `itemName`
+        quantity,
+        scale,
+        description,
+        remainder,
+        remainderScale,
+        postedDate: Date.now(),
+      };
     });
 
-    // Save the inventory document to the database
-    const savedInventory = await newInventory.save();
+    // Bulk‐insert into Mongo
+    const saved = await Inventory.insertMany(docs);
 
-    // Return the saved document
-    res.status(201).json(savedInventory);
-  } catch (error) {
-    console.error("Error posting inventory:", error);
+    // Return all the saved docs
+    res.status(201).json(saved);
+  } catch (err) {
+    console.error("Error posting inventory:", err);
+    // If it was a validation error, send 400
+    if (err.message.includes("Missing required")) {
+      return res.status(400).json({ error: err.message });
+    }
+    // Otherwise, generic 500
     res.status(500).json({ error: "Server error while saving inventory." });
   }
 });
@@ -632,7 +627,9 @@ app.get("/inventory", async (req, res) => {
     res.json(inventories);
   } catch (error) {
     console.error("Error fetching inventories:", error);
-    res.status(500).json({ error: "Server error while retrieving inventories." });
+    res
+      .status(500)
+      .json({ error: "Server error while retrieving inventories." });
   }
 });
 // GET endpoint to retrieve used stock records
@@ -646,19 +643,21 @@ app.get("/usedstock", async (req, res) => {
     res.json(usedStockList);
   } catch (error) {
     console.error("Error fetching used stock:", error);
-    res.status(500).json({ error: "Server error while retrieving used stock." });
+    res
+      .status(500)
+      .json({ error: "Server error while retrieving used stock." });
   }
 });
 
 // GET /api/inventory/search?q=milk
-app.get('/search', async (req, res) => {
+app.get("/search", async (req, res) => {
   try {
     const query = req.query.q;
     const results = await Inventory.find({
-      itemName: { $regex: query, $options: 'i' }
+      itemName: { $regex: query, $options: "i" },
     });
     res.status(200).json(results);
   } catch (err) {
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
